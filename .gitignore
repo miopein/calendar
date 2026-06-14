@@ -1,0 +1,22 @@
+# Python cache
+__pycache__/
+*.py[cod]
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Local SQLite databases
+data/*.db
+data/*.db-*
+backups/*.db
+backups/*.db-*
+
+# Export artifacts
+exports/
+
+# Test/coverage artifacts
+.pytest_cache/
+.coverage
+htmlcov/

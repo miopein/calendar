@@ -482,6 +482,9 @@ def validate_args(args: argparse.Namespace) -> None:
         if bool(args.from_dt) != bool(args.to_dt):
             raise ValueError("Use both --from and --to together")
 
+    if args.command == "list" and args.limit <= 0:
+        raise ValueError("--limit must be a positive integer")
+
     if args.command == "calendar":
         try:
             parse_user_datetime(f"{args.month}-01 00:00")

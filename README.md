@@ -7,6 +7,7 @@
 - Фаза 2 выполнена
 - Фаза 3 выполнена
 - Фаза 4 выполнена
+- Фаза 5 выполнена
 
 Документы:
 - План фаз: docs/ROADMAP.md
@@ -14,6 +15,7 @@
 - Вторая фаза: docs/PHASE_2_STORAGE.md
 - Третья фаза: docs/PHASE_3_CLI_MVP.md
 - Четвертая фаза: docs/PHASE_4_CALENDAR_REPORTS.md
+- Пятая фаза: docs/PHASE_5_RELIABILITY.md
 - Черновая схема БД: db/schema.sql
 
 Управление БД:
@@ -36,3 +38,7 @@ CLI трекер времени:
 - Календарь: python3 scripts/time_tracker.py calendar --month 2026-06
 - Summary: python3 scripts/time_tracker.py summary --month 2026-06 --group-by day
 - Экспорт: python3 scripts/time_tracker.py export --month 2026-06 --format csv --output exports/june.csv
+
+Тесты:
+- Все тесты: python3 -m unittest discover -s tests -p "test_*.py" -v
+- Один файл: python3 -m unittest tests/test_time_tracker_cli.py -v

@@ -6,12 +6,14 @@
 - Фаза 1 выполнена
 - Фаза 2 выполнена
 - Фаза 3 выполнена
+- Фаза 4 выполнена
 
 Документы:
 - План фаз: docs/ROADMAP.md
 - Первая фаза: docs/PHASE_1_FOUNDATION.md
 - Вторая фаза: docs/PHASE_2_STORAGE.md
 - Третья фаза: docs/PHASE_3_CLI_MVP.md
+- Четвертая фаза: docs/PHASE_4_CALENDAR_REPORTS.md
 - Черновая схема БД: db/schema.sql
 
 Управление БД:
@@ -31,3 +33,6 @@ CLI трекер времени:
 - Стоп: python3 scripts/time_tracker.py stop
 - Список: python3 scripts/time_tracker.py list --day 2026-06-14
 - Редактирование: python3 scripts/time_tracker.py edit --id 1 --start "2026-06-14 09:00" --end "2026-06-14 18:00"
+- Календарь: python3 scripts/time_tracker.py calendar --month 2026-06
+- Summary: python3 scripts/time_tracker.py summary --month 2026-06 --group-by day
+- Экспорт: python3 scripts/time_tracker.py export --month 2026-06 --format csv --output exports/june.csv

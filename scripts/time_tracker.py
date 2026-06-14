@@ -2,8 +2,11 @@
 from __future__ import annotations
 
 import argparse
+import calendar
+import csv
+import json
 import sqlite3
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from manage_db import DEFAULT_DB_PATH, apply_migrations
@@ -23,6 +26,14 @@ def from_storage_utc(value: str) -> datetime:
 
 def display_local(value: str) -> str:
     return from_storage_utc(value).astimezone().strftime("%Y-%m-%d %H:%M:%S %Z")
+
+
+def local_date(value: str) -> str:
+    return from_storage_utc(value).astimezone().strftime("%Y-%m-%d")
+
+
+def format_hours(hours: float) -> str:
+    return f"{hours:.2f}h"
 
 
 def parse_user_datetime(value: str) -> datetime:
@@ -61,6 +72,52 @@ def get_active_session(conn: sqlite3.Connection) -> sqlite3.Row | None:
     return conn.execute(
         "SELECT id, start_time, end_time FROM sessions WHERE end_time IS NULL ORDER BY start_time DESC LIMIT 1"
     ).fetchone()
+
+
+def resolve_time_window(
+    day: str | None,
+    month: str | None,
+    from_dt: str | None,
+    to_dt: str | None,
+) -> tuple[str, tuple]:
+    if day:
+        day_start = parse_user_datetime(f"{day} 00:00")
+        day_end = parse_user_datetime(f"{day} 23:59")
+        return (
+            "start_time >= ? AND start_time <= ?",
+            (to_storage_utc(day_start), to_storage_utc(day_end)),
+        )
+
+    if month:
+        month_start = parse_user_datetime(f"{month}-01 00:00")
+        if month_start.month == 12:
+            next_month = month_start.replace(year=month_start.year + 1, month=1)
+        else:
+            next_month = month_start.replace(month=month_start.month + 1)
+        return (
+            "start_time >= ? AND start_time < ?",
+            (to_storage_utc(month_start), to_storage_utc(next_month)),
+        )
+
+    if from_dt and to_dt:
+        from_parsed = parse_user_datetime(from_dt)
+        to_parsed = parse_user_datetime(to_dt)
+        if to_parsed < from_parsed:
+            raise ValueError("--to must be greater than or equal to --from")
+        return (
+            "start_time >= ? AND start_time <= ?",
+            (to_storage_utc(from_parsed), to_storage_utc(to_parsed)),
+        )
+
+    return ("1=1", ())
+
+
+def build_filter_clause(args: argparse.Namespace) -> tuple[str, tuple]:
+    where_sql, params = resolve_time_window(args.day, args.month, args.from_dt, args.to_dt)
+    if args.note_contains:
+        where_sql = f"({where_sql}) AND note LIKE ?"
+        params = (*params, f"%{args.note_contains}%")
+    return where_sql, params
 
 
 def cmd_start(db_path: Path, note: str) -> None:
@@ -116,42 +173,9 @@ def cmd_status(db_path: Path) -> None:
         )
 
 
-def resolve_list_filter(args: argparse.Namespace) -> tuple[str, tuple]:
-    if args.day:
-        day_start = parse_user_datetime(f"{args.day} 00:00")
-        day_end = parse_user_datetime(f"{args.day} 23:59")
-        return (
-            "start_time >= ? AND start_time <= ?",
-            (to_storage_utc(day_start), to_storage_utc(day_end)),
-        )
-
-    if args.month:
-        month_start = parse_user_datetime(f"{args.month}-01 00:00")
-        if month_start.month == 12:
-            next_month = month_start.replace(year=month_start.year + 1, month=1)
-        else:
-            next_month = month_start.replace(month=month_start.month + 1)
-        return (
-            "start_time >= ? AND start_time < ?",
-            (to_storage_utc(month_start), to_storage_utc(next_month)),
-        )
-
-    if args.from_dt and args.to_dt:
-        from_dt = parse_user_datetime(args.from_dt)
-        to_dt = parse_user_datetime(args.to_dt)
-        if to_dt < from_dt:
-            raise ValueError("--to must be greater than or equal to --from")
-        return (
-            "start_time >= ? AND start_time <= ?",
-            (to_storage_utc(from_dt), to_storage_utc(to_dt)),
-        )
-
-    return ("1=1", ())
-
-
 def cmd_list(db_path: Path, args: argparse.Namespace) -> None:
     apply_migrations(db_path)
-    where_sql, params = resolve_list_filter(args)
+    where_sql, params = build_filter_clause(args)
 
     with get_conn(db_path) as conn:
         query = (
@@ -170,11 +194,161 @@ def cmd_list(db_path: Path, args: argparse.Namespace) -> None:
         duration_text = "-"
         if row["end_time"]:
             duration = from_storage_utc(row["end_time"]) - from_storage_utc(row["start_time"])
-            duration_text = f"{duration.total_seconds() / 3600:.2f}h"
+            duration_text = format_hours(duration.total_seconds() / 3600)
 
         print(
             f"id={row['id']} | {display_local(row['start_time'])} -> {end_text} | duration={duration_text} | note={row['note']}"
         )
+
+
+def cmd_summary(db_path: Path, args: argparse.Namespace) -> None:
+    apply_migrations(db_path)
+    where_sql, params = build_filter_clause(args)
+
+    with get_conn(db_path) as conn:
+        rows = conn.execute(
+            (
+                "SELECT id, start_time, end_time, note FROM sessions "
+                f"WHERE {where_sql} ORDER BY start_time"
+            ),
+            params,
+        ).fetchall()
+
+    if not rows:
+        print("No sessions found")
+        return
+
+    closed_rows = [r for r in rows if r["end_time"] is not None]
+    total_hours = sum(
+        (
+            from_storage_utc(r["end_time"]) - from_storage_utc(r["start_time"])
+        ).total_seconds()
+        / 3600
+        for r in closed_rows
+    )
+
+    buckets: dict[str, float] = {}
+    for row in closed_rows:
+        start_dt = from_storage_utc(row["start_time"]).astimezone()
+        end_dt = from_storage_utc(row["end_time"]).astimezone()
+        hours = (end_dt - start_dt).total_seconds() / 3600
+
+        if args.group_by == "day":
+            bucket = start_dt.strftime("%Y-%m-%d")
+        elif args.group_by == "week":
+            year, week, _ = start_dt.isocalendar()
+            bucket = f"{year}-W{week:02d}"
+        else:
+            bucket = start_dt.strftime("%Y-%m")
+
+        buckets[bucket] = buckets.get(bucket, 0.0) + hours
+
+    print(f"Total sessions: {len(rows)}")
+    print(f"Closed sessions: {len(closed_rows)}")
+    print(f"Active sessions: {len(rows) - len(closed_rows)}")
+    print(f"Total hours: {format_hours(total_hours)}")
+    print(f"Group by: {args.group_by}")
+
+    for bucket, hours in sorted(buckets.items()):
+        print(f"  {bucket}: {format_hours(hours)}")
+
+
+def cmd_calendar(db_path: Path, args: argparse.Namespace) -> None:
+    apply_migrations(db_path)
+    month_start = parse_user_datetime(f"{args.month}-01 00:00")
+    if month_start.month == 12:
+        next_month = month_start.replace(year=month_start.year + 1, month=1)
+    else:
+        next_month = month_start.replace(month=month_start.month + 1)
+
+    with get_conn(db_path) as conn:
+        rows = conn.execute(
+            (
+                "SELECT start_time, end_time FROM sessions "
+                "WHERE start_time >= ? AND start_time < ?"
+            ),
+            (to_storage_utc(month_start), to_storage_utc(next_month)),
+        ).fetchall()
+
+    by_day: dict[int, float] = {}
+    for row in rows:
+        local_start = from_storage_utc(row["start_time"]).astimezone()
+        day = local_start.day
+        if row["end_time"]:
+            local_end = from_storage_utc(row["end_time"]).astimezone()
+            hours = (local_end - local_start).total_seconds() / 3600
+        else:
+            hours = (datetime.now().astimezone() - local_start).total_seconds() / 3600
+        by_day[day] = by_day.get(day, 0.0) + max(hours, 0.0)
+
+    year = month_start.year
+    month = month_start.month
+    print(calendar.month(year, month))
+    print("Hours by day:")
+    if not by_day:
+        print("  no data")
+        return
+
+    for day in sorted(by_day):
+        print(f"  {year:04d}-{month:02d}-{day:02d}: {format_hours(by_day[day])}")
+
+
+def cmd_export(db_path: Path, args: argparse.Namespace) -> None:
+    apply_migrations(db_path)
+    where_sql, params = build_filter_clause(args)
+
+    with get_conn(db_path) as conn:
+        rows = conn.execute(
+            (
+                "SELECT id, start_time, end_time, note, created_at, updated_at FROM sessions "
+                f"WHERE {where_sql} ORDER BY start_time"
+            ),
+            params,
+        ).fetchall()
+
+    payload = []
+    for row in rows:
+        duration_hours = None
+        if row["end_time"]:
+            duration_hours = (
+                from_storage_utc(row["end_time"]) - from_storage_utc(row["start_time"])
+            ).total_seconds() / 3600
+
+        payload.append(
+            {
+                "id": row["id"],
+                "start_time_utc": row["start_time"],
+                "end_time_utc": row["end_time"],
+                "start_local_date": local_date(row["start_time"]),
+                "duration_hours": duration_hours,
+                "note": row["note"],
+                "created_at": row["created_at"],
+                "updated_at": row["updated_at"],
+            }
+        )
+
+    args.output.parent.mkdir(parents=True, exist_ok=True)
+    if args.format == "json":
+        args.output.write_text(json.dumps(payload, ensure_ascii=True, indent=2), encoding="utf-8")
+    else:
+        with args.output.open("w", encoding="utf-8", newline="") as f:
+            writer = csv.DictWriter(
+                f,
+                fieldnames=[
+                    "id",
+                    "start_time_utc",
+                    "end_time_utc",
+                    "start_local_date",
+                    "duration_hours",
+                    "note",
+                    "created_at",
+                    "updated_at",
+                ],
+            )
+            writer.writeheader()
+            writer.writerows(payload)
+
+    print(f"Exported {len(payload)} rows to {args.output}")
 
 
 def cmd_edit(db_path: Path, args: argparse.Namespace) -> None:
@@ -267,7 +441,28 @@ def build_parser() -> argparse.ArgumentParser:
     list_cmd.add_argument("--month", help="Filter by month: YYYY-MM")
     list_cmd.add_argument("--from", dest="from_dt", help="Filter range start: YYYY-MM-DD HH:MM")
     list_cmd.add_argument("--to", dest="to_dt", help="Filter range end: YYYY-MM-DD HH:MM")
+    list_cmd.add_argument("--note-contains", help="Filter sessions by note substring")
     list_cmd.add_argument("--limit", type=int, default=20, help="Max rows")
+
+    summary = sub.add_parser("summary", help="Show aggregated report")
+    summary.add_argument("--day", help="Filter by day: YYYY-MM-DD")
+    summary.add_argument("--month", help="Filter by month: YYYY-MM")
+    summary.add_argument("--from", dest="from_dt", help="Filter range start: YYYY-MM-DD HH:MM")
+    summary.add_argument("--to", dest="to_dt", help="Filter range end: YYYY-MM-DD HH:MM")
+    summary.add_argument("--note-contains", help="Filter sessions by note substring")
+    summary.add_argument("--group-by", choices=["day", "week", "month"], default="day")
+
+    calendar_cmd = sub.add_parser("calendar", help="Show monthly calendar with hour totals")
+    calendar_cmd.add_argument("--month", required=True, help="Month in YYYY-MM format")
+
+    export_cmd = sub.add_parser("export", help="Export sessions to CSV or JSON")
+    export_cmd.add_argument("--day", help="Filter by day: YYYY-MM-DD")
+    export_cmd.add_argument("--month", help="Filter by month: YYYY-MM")
+    export_cmd.add_argument("--from", dest="from_dt", help="Filter range start: YYYY-MM-DD HH:MM")
+    export_cmd.add_argument("--to", dest="to_dt", help="Filter range end: YYYY-MM-DD HH:MM")
+    export_cmd.add_argument("--note-contains", help="Filter sessions by note substring")
+    export_cmd.add_argument("--format", choices=["csv", "json"], required=True)
+    export_cmd.add_argument("--output", type=Path, required=True)
 
     edit = sub.add_parser("edit", help="Edit session by id")
     edit.add_argument("--id", type=int, required=True, help="Session id")
@@ -280,12 +475,18 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def validate_args(args: argparse.Namespace) -> None:
-    if args.command == "list":
+    if args.command in {"list", "summary", "export"}:
         filters = [bool(args.day), bool(args.month), bool(args.from_dt or args.to_dt)]
         if sum(filters) > 1:
             raise ValueError("Use only one list filter: --day OR --month OR --from/--to")
         if bool(args.from_dt) != bool(args.to_dt):
             raise ValueError("Use both --from and --to together")
+
+    if args.command == "calendar":
+        try:
+            parse_user_datetime(f"{args.month}-01 00:00")
+        except ValueError as exc:
+            raise ValueError("--month must be in YYYY-MM format") from exc
 
 
 def main() -> None:
@@ -302,6 +503,12 @@ def main() -> None:
         cmd_status(args.db_path)
     elif args.command == "list":
         cmd_list(args.db_path, args)
+    elif args.command == "summary":
+        cmd_summary(args.db_path, args)
+    elif args.command == "calendar":
+        cmd_calendar(args.db_path, args)
+    elif args.command == "export":
+        cmd_export(args.db_path, args)
     elif args.command == "edit":
         cmd_edit(args.db_path, args)
     else:

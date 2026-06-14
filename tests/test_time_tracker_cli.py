@@ -330,6 +330,53 @@ class TimeTrackerCliTests(unittest.TestCase):
                 msg=f"Unexpected error for case {case}: {err}",
             )
 
+    def test_note_with_quotes_and_symbols_is_saved_and_listed(self) -> None:
+        note = "fix 'quote' \"double\" %_ [] {} ; --"
+        self.run_cli("start", "--note", note)
+        self.run_cli("stop")
+
+        out = self.run_cli("list", "--limit", "5").stdout
+        self.assertIn("Found sessions: 1", out)
+        self.assertIn("note=fix 'quote' \"double\" %_ [] {} ; --", out)
+
+    def test_very_long_note_is_persisted(self) -> None:
+        long_note = "n" * 5000
+        self.run_cli("start", "--note", long_note)
+        self.run_cli("stop")
+
+        row = self.get_rows("SELECT note FROM sessions WHERE id = 1")[0]
+        self.assertEqual(len(row["note"]), 5000)
+        self.assertEqual(row["note"], long_note)
+
+    def test_multiline_note_roundtrip_via_edit_and_export_json(self) -> None:
+        self.run_cli("start", "--note", "seed")
+        self.run_cli("stop")
+
+        multiline_note = "line1\\nline2\\tindent"
+        self.run_cli("edit", "--id", "1", "--note", multiline_note, "--reason", "note test")
+
+        json_path = Path(self.tmpdir.name) / "notes_export.json"
+        self.run_cli(
+            "export",
+            "--format",
+            "json",
+            "--output",
+            str(json_path),
+        )
+
+        data = json.loads(json_path.read_text(encoding="utf-8"))
+        self.assertEqual(len(data), 1)
+        self.assertEqual(data[0]["note"], multiline_note)
+
+    def test_note_contains_filter_handles_sql_like_characters(self) -> None:
+        self.run_cli("start", "--note", "100% done")
+        self.run_cli("stop")
+        self.run_cli("start", "--note", "plain note")
+        self.run_cli("stop")
+
+        out = self.run_cli("summary", "--note-contains", "%", "--group-by", "day").stdout
+        self.assertIn("Total sessions: 2", out)
+
 
 if __name__ == "__main__":
     unittest.main()

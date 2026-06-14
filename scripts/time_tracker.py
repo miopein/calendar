@@ -6,7 +6,7 @@ import calendar
 import csv
 import json
 import sqlite3
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 from pathlib import Path
 
 from manage_db import DEFAULT_DB_PATH, apply_migrations
@@ -36,8 +36,22 @@ def format_hours(hours: float) -> str:
     return f"{hours:.2f}h"
 
 
+def month_bounds(month: str) -> tuple[datetime, datetime]:
+    month_start = parse_user_datetime(f"{month}-01 00:00")
+    if month_start.month == 12:
+        next_month = month_start.replace(year=month_start.year + 1, month=1)
+    else:
+        next_month = month_start.replace(month=month_start.month + 1)
+    return month_start, next_month
+
+
+def session_hours(start_time: str, end_time: str) -> float:
+    return (from_storage_utc(end_time) - from_storage_utc(start_time)).total_seconds() / 3600
+
+
 def parse_user_datetime(value: str) -> datetime:
     normalized = value.strip().replace("T", " ")
+    local_tz = datetime.now().astimezone().tzinfo
 
     with_tz_formats = ["%Y-%m-%d %H:%M:%S%z", "%Y-%m-%d %H:%M%z"]
     without_tz_formats = ["%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M"]
@@ -50,7 +64,6 @@ def parse_user_datetime(value: str) -> datetime:
 
     for fmt in without_tz_formats:
         try:
-            local_tz = datetime.now().astimezone().tzinfo
             return datetime.strptime(normalized, fmt).replace(tzinfo=local_tz)
         except ValueError:
             pass
@@ -89,11 +102,7 @@ def resolve_time_window(
         )
 
     if month:
-        month_start = parse_user_datetime(f"{month}-01 00:00")
-        if month_start.month == 12:
-            next_month = month_start.replace(year=month_start.year + 1, month=1)
-        else:
-            next_month = month_start.replace(month=month_start.month + 1)
+        month_start, next_month = month_bounds(month)
         return (
             "start_time >= ? AND start_time < ?",
             (to_storage_utc(month_start), to_storage_utc(next_month)),
@@ -121,7 +130,6 @@ def build_filter_clause(args: argparse.Namespace) -> tuple[str, tuple]:
 
 
 def cmd_start(db_path: Path, note: str) -> None:
-    apply_migrations(db_path)
     with get_conn(db_path) as conn:
         active = get_active_session(conn)
         if active is not None:
@@ -139,7 +147,6 @@ def cmd_start(db_path: Path, note: str) -> None:
 
 
 def cmd_stop(db_path: Path) -> None:
-    apply_migrations(db_path)
     with get_conn(db_path) as conn:
         active = get_active_session(conn)
         if active is None:
@@ -159,7 +166,6 @@ def cmd_stop(db_path: Path) -> None:
 
 
 def cmd_status(db_path: Path) -> None:
-    apply_migrations(db_path)
     with get_conn(db_path) as conn:
         active = get_active_session(conn)
         if active is None:
@@ -174,7 +180,6 @@ def cmd_status(db_path: Path) -> None:
 
 
 def cmd_list(db_path: Path, args: argparse.Namespace) -> None:
-    apply_migrations(db_path)
     where_sql, params = build_filter_clause(args)
 
     with get_conn(db_path) as conn:
@@ -193,8 +198,7 @@ def cmd_list(db_path: Path, args: argparse.Namespace) -> None:
         end_text = display_local(row["end_time"]) if row["end_time"] else "ACTIVE"
         duration_text = "-"
         if row["end_time"]:
-            duration = from_storage_utc(row["end_time"]) - from_storage_utc(row["start_time"])
-            duration_text = format_hours(duration.total_seconds() / 3600)
+            duration_text = format_hours(session_hours(row["start_time"], row["end_time"]))
 
         print(
             f"id={row['id']} | {display_local(row['start_time'])} -> {end_text} | duration={duration_text} | note={row['note']}"
@@ -202,13 +206,12 @@ def cmd_list(db_path: Path, args: argparse.Namespace) -> None:
 
 
 def cmd_summary(db_path: Path, args: argparse.Namespace) -> None:
-    apply_migrations(db_path)
     where_sql, params = build_filter_clause(args)
 
     with get_conn(db_path) as conn:
         rows = conn.execute(
             (
-                "SELECT id, start_time, end_time, note FROM sessions "
+                "SELECT start_time, end_time FROM sessions "
                 f"WHERE {where_sql} ORDER BY start_time"
             ),
             params,
@@ -220,18 +223,14 @@ def cmd_summary(db_path: Path, args: argparse.Namespace) -> None:
 
     closed_rows = [r for r in rows if r["end_time"] is not None]
     total_hours = sum(
-        (
-            from_storage_utc(r["end_time"]) - from_storage_utc(r["start_time"])
-        ).total_seconds()
-        / 3600
+        session_hours(r["start_time"], r["end_time"])
         for r in closed_rows
     )
 
     buckets: dict[str, float] = {}
     for row in closed_rows:
         start_dt = from_storage_utc(row["start_time"]).astimezone()
-        end_dt = from_storage_utc(row["end_time"]).astimezone()
-        hours = (end_dt - start_dt).total_seconds() / 3600
+        hours = session_hours(row["start_time"], row["end_time"])
 
         if args.group_by == "day":
             bucket = start_dt.strftime("%Y-%m-%d")
@@ -254,12 +253,7 @@ def cmd_summary(db_path: Path, args: argparse.Namespace) -> None:
 
 
 def cmd_calendar(db_path: Path, args: argparse.Namespace) -> None:
-    apply_migrations(db_path)
-    month_start = parse_user_datetime(f"{args.month}-01 00:00")
-    if month_start.month == 12:
-        next_month = month_start.replace(year=month_start.year + 1, month=1)
-    else:
-        next_month = month_start.replace(month=month_start.month + 1)
+    month_start, next_month = month_bounds(args.month)
 
     with get_conn(db_path) as conn:
         rows = conn.execute(
@@ -271,14 +265,14 @@ def cmd_calendar(db_path: Path, args: argparse.Namespace) -> None:
         ).fetchall()
 
     by_day: dict[int, float] = {}
+    now_local = datetime.now().astimezone()
     for row in rows:
         local_start = from_storage_utc(row["start_time"]).astimezone()
         day = local_start.day
         if row["end_time"]:
-            local_end = from_storage_utc(row["end_time"]).astimezone()
-            hours = (local_end - local_start).total_seconds() / 3600
+            hours = session_hours(row["start_time"], row["end_time"])
         else:
-            hours = (datetime.now().astimezone() - local_start).total_seconds() / 3600
+            hours = (now_local - local_start).total_seconds() / 3600
         by_day[day] = by_day.get(day, 0.0) + max(hours, 0.0)
 
     year = month_start.year
@@ -294,7 +288,6 @@ def cmd_calendar(db_path: Path, args: argparse.Namespace) -> None:
 
 
 def cmd_export(db_path: Path, args: argparse.Namespace) -> None:
-    apply_migrations(db_path)
     where_sql, params = build_filter_clause(args)
 
     with get_conn(db_path) as conn:
@@ -310,9 +303,7 @@ def cmd_export(db_path: Path, args: argparse.Namespace) -> None:
     for row in rows:
         duration_hours = None
         if row["end_time"]:
-            duration_hours = (
-                from_storage_utc(row["end_time"]) - from_storage_utc(row["start_time"])
-            ).total_seconds() / 3600
+            duration_hours = session_hours(row["start_time"], row["end_time"])
 
         payload.append(
             {
@@ -355,7 +346,6 @@ def cmd_edit(db_path: Path, args: argparse.Namespace) -> None:
     if not args.start and not args.end and args.note is None:
         raise ValueError("Provide at least one field to edit: --start, --end, --note")
 
-    apply_migrations(db_path)
     with get_conn(db_path) as conn:
         row = conn.execute(
             "SELECT id, start_time, end_time, note FROM sessions WHERE id = ?",
@@ -497,6 +487,7 @@ def main() -> None:
     args = parser.parse_args()
 
     validate_args(args)
+    apply_migrations(args.db_path)
 
     if args.command == "start":
         cmd_start(args.db_path, args.note)

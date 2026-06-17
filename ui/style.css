@@ -659,6 +659,75 @@ body {
   margin-left: 18px;
 }
 
+#calendarWindowMonths .calendar-window-head {
+  padding: 8px 10px;
+}
+
+#calendarWindowMonths .calendar-window-head .screen-title {
+  text-align: center;
+  font-size: 62px;
+  letter-spacing: 0.5px;
+  line-height: 1;
+}
+
+#calendarWindowMonths .window-mark,
+#calendarWindowMonths .icon-btn {
+  width: 38px;
+  height: 38px;
+  font-size: 18px;
+}
+
+#calendarWindowMonths .list-box {
+  padding: 52px 0 0;
+}
+
+#calendarWindowMonths .list-row {
+  border-bottom: 2px solid var(--line);
+  min-height: 80px;
+}
+
+#calendarWindowMonths .list-row.month-expanded {
+  border-bottom: 0;
+}
+
+#calendarWindowMonths .row-main {
+  text-align: center;
+  font-size: 46px;
+  letter-spacing: 1px;
+  padding: 10px 0;
+  line-height: 1;
+}
+
+#calendarWindowMonths .row-expand {
+  width: 54px;
+  border-left: 0;
+  font-size: 20px;
+  color: var(--fg);
+  padding: 0;
+  line-height: 1;
+}
+
+#calendarWindowMonths .sum-row {
+  min-height: 82px;
+  display: flex;
+  align-items: flex-start;
+  padding: 12px 34px 10px;
+  font-size: 32px;
+  letter-spacing: 1px;
+  border-bottom: 2px solid var(--line);
+  margin: 0;
+}
+
+#calendarWindowMonths .sum-row[hidden] {
+  display: none;
+}
+
+#calendarWindowMonths .sum-row .total-time {
+  color: var(--fg);
+  font-weight: 700;
+  margin-left: 18px;
+}
+
 .saved-list {
   margin-top: 10px;
   display: grid;

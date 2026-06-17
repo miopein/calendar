@@ -651,10 +651,19 @@ function renderCalendarMonths() {
   el.monthsListContent.innerHTML = "";
   const totals = new Map(groupedByMonth(state.ui.selectedYear));
 
+  const validKeys = new Set(Array.from({ length: 12 }, (_, month) => monthKey(state.ui.selectedYear, month)));
+  const expandedValid = Array.from(state.ui.expandedMonths).filter((k) => validKeys.has(k));
+  const currentExpanded = expandedValid.length > 0 ? expandedValid[0] : monthKey(state.ui.selectedYear, state.ui.selectedMonth);
+  for (const key of validKeys) state.ui.expandedMonths.delete(key);
+  state.ui.expandedMonths.add(currentExpanded);
+
   for (let month = 0; month < 12; month += 1) {
     const minutes = totals.get(month) || 0;
+    const key = monthKey(state.ui.selectedYear, month);
+    const isExpanded = state.ui.expandedMonths.has(key);
     const row = document.createElement("div");
     row.className = "list-row";
+    if (isExpanded) row.classList.add("month-expanded");
     const main = document.createElement("button");
     main.className = "row-main";
     main.textContent = MONTHS[month];
@@ -664,12 +673,14 @@ function renderCalendarMonths() {
       renderCalendar();
     });
     const expand = document.createElement("button");
-    const key = monthKey(state.ui.selectedYear, month);
     expand.className = "row-expand";
-    expand.textContent = state.ui.expandedMonths.has(key) ? "▲" : "▼";
+    expand.textContent = isExpanded ? "▲" : "▼";
     expand.addEventListener("click", () => {
       if (state.ui.expandedMonths.has(key)) state.ui.expandedMonths.delete(key);
-      else state.ui.expandedMonths.add(key);
+      else {
+        for (const k of validKeys) state.ui.expandedMonths.delete(k);
+        state.ui.expandedMonths.add(key);
+      }
       renderCalendar();
     });
     row.appendChild(main);
@@ -678,7 +689,7 @@ function renderCalendarMonths() {
 
     const sum = document.createElement("p");
     sum.className = "sum-row";
-    sum.hidden = !state.ui.expandedMonths.has(key);
+    sum.hidden = !isExpanded;
     sum.innerHTML = `SUM: <span class="total-time" data-minutes="${minutes}">${minutesToDisplay(minutes)}</span>`;
     el.monthsListContent.appendChild(sum);
   }

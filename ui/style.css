@@ -497,29 +497,31 @@ body {
 
 .shift-list {
   min-height: 180px;
+  display: grid;
+  gap: 10px;
+  padding: 8px 12px 0;
 }
 
 .shift-item {
-  border-top: 2px solid var(--line);
-  padding: 5px 8px 6px;
+  border: 2px solid var(--line);
+  padding: 3px 7px 0;
 }
 
 .shift-item:first-child {
-  border-top: 0;
+  border-top: 2px solid var(--line);
 }
 
 .shift-row {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 8px;
+  position: relative;
+  min-height: 34px;
 }
 
 .shift-top {
   display: flex;
   justify-content: space-between;
   align-items: baseline;
-  font-size: 18px;
+  font-size: 22px;
+  line-height: 1;
 }
 
 .shift-date {
@@ -535,11 +537,17 @@ body {
   background: transparent;
   color: var(--fg);
   font: inherit;
-  text-align: left;
+  text-align: center;
   cursor: pointer;
   padding: 0;
-  flex: 1;
-  font-size: 20px;
+  width: 100%;
+  font-size: 24px;
+  line-height: 1.05;
+  white-space: nowrap;
+}
+
+.shift-row.has-note .shift-main {
+  padding: 0 44px;
 }
 
 .shift-main.selected {
@@ -547,19 +555,26 @@ body {
 }
 
 .note-toggle {
-  width: 32px;
-  height: 28px;
+  width: 34px;
+  height: 30px;
   border: 2px solid var(--line);
   background: var(--bg);
   color: var(--fg);
   cursor: pointer;
+  position: absolute;
+  top: 52%;
+  right: 0;
+  transform: translateY(-50%);
+  font-size: 18px;
+  line-height: 1;
 }
 
 .shift-note {
   margin-top: 6px;
-  border-top: 1px solid var(--line);
-  padding-top: 6px;
+  border-top: 2px solid var(--line);
+  padding: 6px 0;
   color: var(--muted);
+  font-size: 22px;
 }
 
 .fab-row {
@@ -571,15 +586,53 @@ body {
 
 .shift-footer {
   display: flex;
-  justify-content: space-between;
+  justify-content: flex-end;
   align-items: center;
-  border-top: 2px solid var(--line);
-  padding: 8px;
+  border-top: 0;
+  padding: 6px 10px 10px;
 }
 
 .fab {
+  width: 34px;
+  height: 34px;
+  font-size: 16px;
+}
+
+#calendarWindowShifts .calendar-window-head {
+  padding: 4px 6px;
+  gap: 6px;
+}
+
+#calendarWindowShifts .shift-panel {
+  border-top: 0;
+}
+
+#calendarWindowShifts #shiftBackButton {
+  margin-left: 2px;
+}
+
+#calendarWindowShifts .fab-row {
+  gap: 8px;
+}
+
+#calendarWindowShifts .calendar-window-head .screen-title {
+  text-align: center;
+  font-size: 32px;
+  letter-spacing: 0.5px;
+  line-height: 1;
+}
+
+#calendarWindowShifts .window-mark,
+#calendarWindowShifts .icon-btn:not(.fab) {
+  width: 38px;
+  height: 38px;
+  font-size: 18px;
+}
+
+#calendarWindowShifts .icon-btn.fab {
   width: 42px;
   height: 42px;
+  font-size: 20px;
 }
 
 #calendarWindowYears .icon-btn,
@@ -596,7 +649,7 @@ body {
 
 #calendarWindowYears .calendar-window-head .screen-title {
   text-align: center;
-  font-size: 62px;
+  font-size: 56px;
   letter-spacing: 0.5px;
   line-height: 1;
 }
@@ -609,12 +662,12 @@ body {
 }
 
 #calendarWindowYears .list-box {
-  padding: 28px 0 0;
+  padding: 0;
 }
 
 #calendarWindowYears .list-row {
   border-bottom: 2px solid var(--line);
-  min-height: 64px;
+  min-height: 58px;
 }
 
 #calendarWindowYears .list-row.year-expanded {
@@ -623,9 +676,9 @@ body {
 
 #calendarWindowYears .row-main {
   text-align: center;
-  font-size: 46px;
+  font-size: 40px;
   letter-spacing: 2px;
-  padding: 5px 0 5px 54px;
+  padding: 4px 0 4px 54px;
   line-height: 1;
 }
 
@@ -639,11 +692,11 @@ body {
 }
 
 #calendarWindowYears .sum-row {
-  min-height: 72px;
+  min-height: 66px;
   display: flex;
   align-items: flex-start;
-  padding: 12px 20px 10px;
-  font-size: 32px;
+  padding: 10px 18px 8px;
+  font-size: 28px;
   letter-spacing: 1px;
   border-bottom: 2px solid var(--line);
   margin: 0;
@@ -665,7 +718,7 @@ body {
 
 #calendarWindowMonths .calendar-window-head .screen-title {
   text-align: center;
-  font-size: 62px;
+  font-size: 56px;
   letter-spacing: 0.5px;
   line-height: 1;
 }
@@ -678,12 +731,12 @@ body {
 }
 
 #calendarWindowMonths .list-box {
-  padding: 52px 0 0;
+  padding: 0;
 }
 
 #calendarWindowMonths .list-row {
   border-bottom: 2px solid var(--line);
-  min-height: 68px;
+  min-height: 58px;
 }
 
 #calendarWindowMonths .list-row.month-expanded {
@@ -692,9 +745,9 @@ body {
 
 #calendarWindowMonths .row-main {
   text-align: center;
-  font-size: 40px;
+  font-size: 34px;
   letter-spacing: 1px;
-  padding: 7px 0 7px 48px;
+  padding: 5px 0 5px 48px;
   line-height: 1;
   color: #b9b9b9;
 }
@@ -706,7 +759,7 @@ body {
 #calendarWindowMonths .row-expand {
   width: 48px;
   border-left: 0;
-  font-size: 18px;
+  font-size: 16px;
   color: var(--fg);
   padding: 0;
   line-height: 1;

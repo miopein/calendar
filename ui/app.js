@@ -548,7 +548,7 @@ function shiftsByMonth(year, month) {
       const d = new Date(r.startMs);
       return d.getFullYear() === year && d.getMonth() === month;
     })
-    .sort((a, b) => a.startMs - b.startMs);
+    .sort((a, b) => b.startMs - a.startMs);
 }
 
 function showCalendarWindow(level) {
@@ -746,6 +746,7 @@ function renderShiftList() {
     row.appendChild(main);
 
     if (r.note) {
+      row.classList.add("has-note");
       const toggle = document.createElement("button");
       toggle.className = "note-toggle";
       toggle.textContent = state.ui.expandedNotes.has(r.id) ? "▲" : "▼";

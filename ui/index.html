@@ -60,14 +60,16 @@
       <section class="screen" data-screen="calendar">
         <div id="calendarWindowMenu" class="calendar-window">
           <header class="calendar-window-head">
-            <span class="window-mark">≡</span>
+            <button class="window-mark calendar-menu-trigger">≡</button>
             <h2 class="screen-title">CALENDAR</h2>
           </header>
 
           <div class="calendar-menu">
-            <button class="cal-link" id="openYearsButton">YEAR</button>
-            <button class="cal-link" id="openMonthsButton">MONTH</button>
-            <button class="cal-link" id="openShiftsButton">SHIFTS</button>
+            <div class="calendar-menu-links">
+              <button class="cal-link" id="openYearsButton">YEAR</button>
+              <button class="cal-link" id="openMonthsButton">MONTH</button>
+              <button class="cal-link" id="openShiftsButton">SHIFTS</button>
+            </div>
             <p class="calendar-today" id="calendarToday">TODAY: --.--.----</p>
           </div>
         </div>

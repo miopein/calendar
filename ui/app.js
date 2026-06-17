@@ -166,6 +166,7 @@ function applyTheme() {
 
 function setView(next) {
   state.view = next;
+  document.querySelector(".app")?.classList.toggle("calendar-shell", next === "calendar");
   for (const s of el.screens) s.classList.toggle("is-active", s.dataset.screen === next);
 }
 
@@ -747,6 +748,12 @@ function initEvents() {
     state.ui.calendarLevel = "shifts";
     renderCalendar();
   });
+
+  const calendarMenuTriggers = Array.from(document.querySelectorAll(".calendar-menu-trigger"));
+  for (const trigger of calendarMenuTriggers) {
+    trigger.addEventListener("click", () => setMenuOpen(true));
+  }
+
   el.yearsBackButton.addEventListener("click", goCalendarBack);
   el.monthsBackButton.addEventListener("click", goCalendarBack);
   el.shiftBackButton.addEventListener("click", goCalendarBack);

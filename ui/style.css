@@ -33,6 +33,7 @@ body {
 
 .app {
   width: min(420px, 100%);
+  height: 780px;
   min-height: 780px;
   background: var(--bg);
   border: 3px solid var(--line);
@@ -192,6 +193,15 @@ body {
   overflow-x: hidden;
 }
 
+.app.calendar-shell .topbar {
+  display: none;
+}
+
+.app.calendar-shell .screen-wrap {
+  height: 100%;
+  padding: 0;
+}
+
 .screen {
   display: none;
 }
@@ -338,6 +348,7 @@ body {
   min-height: 640px;
   display: flex;
   flex-direction: column;
+  height: 100%;
 }
 
 .calendar-window[hidden] {
@@ -363,30 +374,58 @@ body {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 34px;
-  height: 34px;
+  width: 38px;
+  height: 38px;
   border: 2px solid var(--line);
-  font-size: 16px;
-}
-
-.calendar-menu {
-  display: grid;
-  gap: 0;
+  background: var(--bg);
+  color: var(--fg);
+  font: inherit;
+  font-size: 17px;
+  line-height: 1;
+  cursor: pointer;
   padding: 0;
 }
 
+.calendar-menu {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  align-items: stretch;
+  padding: 0;
+}
+
+.calendar-menu-links {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  gap: 72px;
+  transform: translateY(-26px);
+}
+
 .cal-link {
-  padding: 8px 10px;
-  text-align: left;
-  font-size: 40px;
+  padding: 0;
+  text-align: center;
+  font-size: 58px;
+  line-height: 1;
   border: 0;
-  border-bottom: 2px solid var(--line);
+  min-width: 260px;
+  background: transparent;
+  color: var(--fg);
+  font-family: inherit;
+  cursor: pointer;
+}
+
+.screen[data-screen="calendar"] {
+  height: 100%;
 }
 
 .calendar-today {
-  margin: 10px 8px 0;
+  margin: 0 0 20px 16px;
   color: var(--muted);
   font-size: 20px;
+  align-self: flex-start;
 }
 
 .list-box {
@@ -667,6 +706,7 @@ body {
 
   .app {
     width: 100%;
+    height: 100vh;
     min-height: 100vh;
     border-width: 0;
   }
@@ -679,8 +719,11 @@ body {
     font-size: 36px;
   }
 
-  .cal-link,
   .nav-link {
     font-size: 30px;
+  }
+
+  .cal-link {
+    font-size: 58px;
   }
 }

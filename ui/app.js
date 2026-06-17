@@ -1,5 +1,7 @@
 const STORAGE_KEY = "timeTracker.records.v1";
 const LATEST_SAVED_KEY = "timeTracker.latestSavedId.v1";
+const CUSTOM_YEARS_KEY = "timeTracker.customYears.v1";
+const YEARS_MIGRATION_V2_KEY = "timeTracker.yearsMigrated.v2";
 
 const state = {
   view: "home",
@@ -9,6 +11,7 @@ const state = {
   latestSavedId: localStorage.getItem(LATEST_SAVED_KEY) || null,
   session: { status: "idle", startMs: null, endMs: null, intervalId: null },
   records: [],
+  customYears: new Set(),
   ui: {
     calendarLevel: "menu",
     selectedYear: null,
@@ -145,6 +148,107 @@ function saveRecords() {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(state.records));
   if (state.latestSavedId) localStorage.setItem(LATEST_SAVED_KEY, state.latestSavedId);
   else localStorage.removeItem(LATEST_SAVED_KEY);
+}
+
+function loadCustomYears() {
+  try {
+    const raw = localStorage.getItem(CUSTOM_YEARS_KEY);
+    const parsed = raw ? JSON.parse(raw) : [];
+    const years = Array.isArray(parsed)
+      ? parsed.filter((y) => Number.isInteger(y) && y >= 1970 && y <= 2200)
+      : [];
+    state.customYears = new Set(years);
+  } catch {
+    state.customYears = new Set();
+  }
+
+  const nowYear = new Date().getFullYear();
+  if (state.customYears.size === 0) {
+    for (let y = nowYear - 2; y <= nowYear + 2; y += 1) state.customYears.add(y);
+  }
+
+  // One-time migration from older YEAR logic that could shift the visible range unexpectedly.
+  if (!localStorage.getItem(YEARS_MIGRATION_V2_KEY)) {
+    for (let y = nowYear - 2; y <= nowYear + 2; y += 1) state.customYears.add(y);
+
+    const yearsWithRecords = new Set(groupedByYear().map(([y]) => y));
+    for (const year of Array.from(state.customYears)) {
+      if (year > nowYear + 2 && !yearsWithRecords.has(year)) state.customYears.delete(year);
+    }
+
+    localStorage.setItem(YEARS_MIGRATION_V2_KEY, "1");
+  }
+
+  // Always keep years that already have records visible in YEAR screen.
+  for (const [year] of groupedByYear()) state.customYears.add(year);
+  saveCustomYears();
+}
+
+function saveCustomYears() {
+  const years = Array.from(state.customYears).sort((a, b) => a - b);
+  localStorage.setItem(CUSTOM_YEARS_KEY, JSON.stringify(years));
+}
+
+function allKnownYears() {
+  return Array.from(state.customYears)
+    .filter((y) => Number.isInteger(y) && y >= 1970 && y <= 2200)
+    .sort((a, b) => a - b);
+}
+
+function addNextYear() {
+  const years = allKnownYears();
+  const currentMax = years.length ? years[years.length - 1] : new Date().getFullYear();
+  const year = Math.min(2200, currentMax + 1);
+
+  const ok = confirm(`Добавить новый год ${year}?`);
+  if (!ok) return;
+
+  state.customYears.add(year);
+  state.ui.selectedYear = year;
+  state.ui.expandedYears.add(String(year));
+  saveCustomYears();
+  renderCalendar();
+}
+
+function deleteYearWithConfirm(year) {
+  const yearRecords = state.records.filter((r) => new Date(r.startMs).getFullYear() === year);
+  const hasRecords = yearRecords.length > 0;
+
+  if (hasRecords) {
+    const totalMinutes = yearRecords.reduce((acc, r) => acc + toMinutes(r.startMs, r.endMs), 0);
+    const ok = confirm(
+      `Удалить ${year}?\\nБудут удалены все смены за этот год (${yearRecords.length} записей, ${minutesToDisplay(totalMinutes)}).`
+    );
+    if (!ok) return;
+
+    const deletedIds = new Set(yearRecords.map((r) => r.id));
+    state.records = state.records.filter((r) => new Date(r.startMs).getFullYear() !== year);
+    if (state.latestSavedId && deletedIds.has(state.latestSavedId)) {
+      const latest = [...state.records].sort((a, b) => (b.savedAt || b.endMs) - (a.savedAt || a.endMs))[0];
+      state.latestSavedId = latest ? latest.id : null;
+    }
+    saveRecords();
+  } else {
+    const ok = confirm(`Удалить пустой год ${year}?`);
+    if (!ok) return;
+  }
+
+  state.customYears.delete(year);
+  state.ui.expandedYears.delete(String(year));
+  for (const key of Array.from(state.ui.expandedMonths)) {
+    if (String(key).startsWith(`${year}-`)) state.ui.expandedMonths.delete(key);
+  }
+
+  if (state.ui.selectedYear === year) {
+    const nowYear = new Date().getFullYear();
+    const options = allKnownYears().filter((y) => y !== year);
+    state.ui.selectedYear = options.includes(nowYear) ? nowYear : (options[options.length - 1] || nowYear);
+    state.ui.selectedMonth = 0;
+    state.ui.calendarLevel = "years";
+  }
+
+  saveCustomYears();
+  renderCalendar();
 }
 
 function ensureCalendarDefaults() {
@@ -463,17 +567,23 @@ function renderCalendarYears() {
   showCalendarWindow("years");
   el.yearsListContent.innerHTML = "";
   const totals = new Map(groupedByYear());
-  const nowYear = new Date().getFullYear();
-  const anchor = state.ui.selectedYear || nowYear;
-  const minDataYear = totals.size ? Math.min(...totals.keys()) : anchor;
-  const maxDataYear = totals.size ? Math.max(...totals.keys()) : anchor;
-  const start = Math.min(anchor - 2, minDataYear);
-  const end = Math.max(anchor + 2, maxDataYear);
+  const years = allKnownYears();
 
-  for (let year = start; year <= end; year += 1) {
+  const validYearKeys = new Set(years.map((y) => String(y)));
+  const expandedValid = Array.from(state.ui.expandedYears).filter((k) => validYearKeys.has(k));
+  state.ui.expandedYears = new Set(expandedValid.slice(0, 1));
+
+  if (state.ui.expandedYears.size === 0) {
+    const fallback = String(state.ui.selectedYear || new Date().getFullYear());
+    if (validYearKeys.has(fallback)) state.ui.expandedYears.add(fallback);
+  }
+
+  for (const year of years) {
     const minutes = totals.get(year) || 0;
+    const isExpanded = state.ui.expandedYears.has(String(year));
     const row = document.createElement("div");
     row.className = "list-row";
+    if (isExpanded) row.classList.add("year-expanded");
     const main = document.createElement("button");
     main.className = "row-main";
     main.textContent = String(year);
@@ -485,19 +595,51 @@ function renderCalendarYears() {
     const expand = document.createElement("button");
     expand.className = "row-expand";
     expand.textContent = state.ui.expandedYears.has(String(year)) ? "▲" : "▼";
+    let holdTimer = null;
+    let holdTriggered = false;
+
+    const startHold = () => {
+      holdTimer = setTimeout(() => {
+        holdTriggered = true;
+        deleteYearWithConfirm(year);
+        holdTimer = null;
+      }, 550);
+    };
+
+    const stopHold = () => {
+      if (holdTimer) {
+        clearTimeout(holdTimer);
+        holdTimer = null;
+      }
+    };
+
+    expand.addEventListener("mousedown", startHold);
+    expand.addEventListener("touchstart", startHold, { passive: true });
+    expand.addEventListener("mouseup", stopHold);
+    expand.addEventListener("mouseleave", stopHold);
+    expand.addEventListener("touchend", stopHold);
+
     expand.addEventListener("click", () => {
+      if (holdTriggered) {
+        holdTriggered = false;
+        return;
+      }
       const key = String(year);
-      if (state.ui.expandedYears.has(key)) state.ui.expandedYears.delete(key);
-      else state.ui.expandedYears.add(key);
+      if (state.ui.expandedYears.has(key)) state.ui.expandedYears.clear();
+      else {
+        state.ui.expandedYears.clear();
+        state.ui.expandedYears.add(key);
+      }
       renderCalendar();
     });
+
     row.appendChild(main);
     row.appendChild(expand);
     el.yearsListContent.appendChild(row);
 
     const sum = document.createElement("p");
     sum.className = "sum-row";
-    sum.hidden = !state.ui.expandedYears.has(String(year));
+    sum.hidden = !isExpanded;
     sum.innerHTML = `SUM: <span class="total-time" data-minutes="${minutes}">${minutesToDisplay(minutes)}</span>`;
     el.yearsListContent.appendChild(sum);
   }
@@ -749,6 +891,9 @@ function initEvents() {
     renderCalendar();
   });
 
+  const yearsTitle = el.calendarWindowYears.querySelector(".screen-title");
+  if (yearsTitle) setupHoldAction(yearsTitle, addNextYear);
+
   const calendarMenuTriggers = Array.from(document.querySelectorAll(".calendar-menu-trigger"));
   for (const trigger of calendarMenuTriggers) {
     trigger.addEventListener("click", () => setMenuOpen(true));
@@ -792,6 +937,7 @@ function renderAll() {
 
 function init() {
   loadRecords();
+  loadCustomYears();
   seedDemoIfEmpty();
   ensureCalendarDefaults();
   el.formatToggle.checked = state.formatMode === "clock";

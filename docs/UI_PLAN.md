@@ -198,9 +198,49 @@
 
 ## 3. Календарь
 
+### Архитектура календаря
+
+Календарь реализуется как один экран (`data-screen="calendar"`) с четырьмя вложенными окнами (`.calendar-window`), которые показываются/скрываются через атрибут `hidden`:
+- `calendarWindowMenu` — меню выбора (YEAR, MONTH, SHIFTS)
+- `calendarWindowYears` — список лет
+- `calendarWindowMonths` — список месяцев
+- `calendarWindowShifts` — список смен
+
+Переключение между окнами происходит через функцию `showCalendarWindow(level)`, которая управляет атрибутом `hidden`.
+
 ### Экран меню календаря
-- Пункты: **YEAR**, **MONTH**, **SHIFTS**
-- Кнопка меню (гамбургер) открывает боковое меню
+
+**Содержание меню:**
+- Шапка с кнопкой меню (≡) и заголовком "CALENDAR"
+- Три кнопки: **YEAR**, **MONTH**, **SHIFTS** 
+- Строка "TODAY: ДД.ММ.ГГГГ" внизу
+
+**Структура элементов в коде:**
+```
+#calendarWindowMenu.calendar-window
+├── header.calendar-window-head
+│   ├── .window-mark (визуальный элемент ≡)
+│   └── h2.screen-title (CALENDAR)
+└── div.calendar-menu
+    ├── button#openYearsButton.cal-link (YEAR)
+    ├── button#openMonthsButton.cal-link (MONTH)
+    ├── button#openShiftsButton.cal-link (SHIFTS)
+    └── p#calendarToday.calendar-today (TODAY: дата)
+```
+
+**Стилизация меню:**
+- Контейнер `.calendar-menu`: display grid с gap 0
+- Кнопки `.cal-link`: font-size 40px, padding 8px 10px, border-bottom 2px solid
+- Текст "TODAY": font-size 20px, margin 10px 8px 0, color muted (серый)
+- Шапка `.calendar-window-head`: gap 6px, border-bottom 2px, padding 4px 6px
+
+**Логика кликов:**
+- Нажатие YEAR → `state.ui.calendarLevel = "years"` → `renderCalendar()` → скрытие меню, показ окна с годами
+- Нажатие MONTH → `state.ui.calendarLevel = "months"` → `renderCalendar()` → скрытие меню, показ окна с месяцами
+- Нажатие SHIFTS → `state.ui.calendarLevel = "shifts"` → `renderCalendar()` → скрытие меню, показ окна со смен
+
+**TODAY обновляется автоматически:**
+- Функция `renderCalendarMenu()` устанавливает текст в формате "TODAY: ДД.ММ.ГГГГ" с текущей датой
 
 ### Переход YEAR -> список годов
 - Нажатие **YEAR** открывает экран годов
